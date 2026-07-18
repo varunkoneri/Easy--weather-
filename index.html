@@ -1,1 +1,417 @@
+<div id="weather-widget-root"></div>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  #weather-widget-root {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    border-radius: 0;
+    overflow: hidden;
+    position: relative;
+    color: #fff;
+    isolation: isolate;
+  }
+  .w-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    transition: background 1s ease;
+    overflow: hidden;
+  }
 
+  /* ---- CLOUDY ---- */
+  .bg-cloudy { background: linear-gradient(180deg, #4a5568 0%, #6b7a99 40%, #8b98b8 100%); }
+  .cloud-shape {
+    position: absolute;
+    background: rgba(255,255,255,0.35);
+    border-radius: 50%;
+    filter: blur(1px);
+  }
+  @keyframes drift {
+    from { transform: translateX(-120px); }
+    to { transform: translateX(460px); }
+  }
+
+  /* ---- SUNNY ---- */
+  .bg-sunny { background: linear-gradient(180deg, #4a90e2 0%, #7bb8f0 50%, #a8d4f5 100%); }
+  .sun {
+    position: absolute;
+    top: 40px;
+    right: 60px;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff6d5 0%, #ffe17d 55%, rgba(255,225,125,0) 75%);
+    box-shadow: 0 0 60px 20px rgba(255, 225, 125, 0.55);
+    animation: pulse-sun 4s ease-in-out infinite;
+  }
+  @keyframes pulse-sun {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.06); opacity: 0.92; }
+  }
+
+  /* ---- RAIN ---- */
+  .bg-rain { background: linear-gradient(180deg, #232b3d 0%, #3a4358 45%, #4c5570 100%); }
+  .raindrop {
+    position: absolute;
+    width: 2px;
+    height: 18px;
+    background: linear-gradient(180deg, rgba(180,210,255,0), rgba(180,210,255,0.85));
+    top: -20px;
+    animation: fall linear infinite;
+  }
+  @keyframes fall {
+    to { transform: translateY(520px); }
+  }
+  .rain-cloud {
+    position: absolute;
+    top: 30px;
+    background: rgba(30,35,50,0.55);
+    border-radius: 50%;
+  }
+
+  /* ---- NIGHT (cloudy/sunny overrides) ---- */
+  .bg-night.bg-cloudy { background: linear-gradient(180deg, #1e2740 0%, #2c3654 45%, #3d4968 100%); }
+  .bg-night.bg-cloudy .cloud-shape { background: rgba(255,255,255,0.12); }
+  .bg-night.bg-sunny { background: linear-gradient(180deg, #0d1230 0%, #1c2550 50%, #2a3468 100%); }
+  .moon {
+    position: absolute;
+    top: 45px;
+    right: 70px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: #f2f3ea;
+    box-shadow: inset -14px -4px 0 0 #cfd0c4, 0 0 30px 8px rgba(242,243,234,0.35);
+  }
+
+  /* ---- Content layer ---- */
+  .w-content { position: relative; z-index: 1; }
+  .w-statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px 0 24px;
+    font-size: 15px;
+    font-weight: 600;
+    opacity: 0.95;
+  }
+  .w-statusbar-icons { display: flex; align-items: center; gap: 5px; }
+  .w-header { padding: 46px 28px 6px 28px; }
+  .w-location { font-size: 14px; font-weight: 600; opacity: 0.85; letter-spacing: 0.5px; text-transform: uppercase; }
+  .w-date { font-size: 13px; opacity: 0.65; margin-top: 2px; }
+  .w-current { display: flex; align-items: flex-start; justify-content: space-between; padding: 6px 28px 22px 28px; }
+  .w-temp { font-size: 72px; font-weight: 200; line-height: 1; letter-spacing: -2px; }
+  .w-condition { text-align: right; padding-top: 6px; }
+  .w-condition-text { font-size: 17px; font-weight: 500; }
+  .w-high-low { font-size: 13px; opacity: 0.75; margin-top: 4px; }
+
+  .w-blurb {
+    margin: 0 20px 16px 20px;
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    font-size: 13.5px;
+    line-height: 1.4;
+  }
+
+  .w-hourly {
+    margin: 0 20px 16px 20px;
+    padding: 16px 6px;
+    background: rgba(255,255,255,0.10);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    display: flex;
+    overflow-x: auto;
+    gap: 18px;
+  }
+  .w-hourly::-webkit-scrollbar { display: none; }
+  .w-hour {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    min-width: 34px;
+    flex-shrink: 0;
+    padding: 0 6px;
+  }
+  .w-hour-label { opacity: 0.75; font-weight: 500; }
+  .w-hour-temp { font-size: 14px; font-weight: 600; }
+  .w-hour-rain { font-size: 10px; color: #9cd0ff; }
+
+  .w-daily {
+    margin: 0 20px 20px 20px;
+    padding: 8px 18px;
+    background: rgba(255,255,255,0.10);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+  }
+  .w-day-row {
+    display: flex;
+    align-items: center;
+    padding: 11px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+    font-size: 13.5px;
+    gap: 10px;
+  }
+  .w-day-row:last-child { border-bottom: none; }
+  .w-day-name { width: 46px; font-weight: 600; }
+  .w-day-rain { width: 40px; font-size: 11px; color: #9cd0ff; }
+  .w-day-low { width: 26px; opacity: 0.65; text-align: right; }
+  .w-bar-track { flex: 1; height: 3px; background: rgba(255,255,255,0.2); border-radius: 3px; position: relative; }
+  .w-bar-fill { position: absolute; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #ffd166, #ff7b54); }
+  .w-day-high { width: 30px; font-weight: 600; }
+
+  .w-icon { width: 26px; height: 26px; flex-shrink: 0; }
+
+  .w-refresh-note {
+    padding: 0 28px 22px 28px;
+    font-size: 11px;
+    opacity: 0.55;
+    text-align: center;
+  }
+</style>
+
+<script>
+(function() {
+  const root = document.getElementById('weather-widget-root');
+  const LOCATION = "Chennai, Tamil Nadu, India";
+  const LAT = 13.0827, LON = 80.2707;
+  const REFRESH_MINUTES = 20;
+
+  // Fallback data, used only if the live fetch fails on first load
+  let state = {
+    condition: "cloudy",
+    isDay: true,
+    location: "Chennai, Tamil Nadu",
+    current: { tempF: 82, conditionText: "Cloudy" },
+    todayHigh: 92,
+    todayLow: 80,
+    blurb: "Fetching the latest conditions…",
+    hourly: [],
+    daily: [],
+    updatedAt: null
+  };
+
+  function cloudIcon(size, opacity) {
+    return `<svg class="w-icon" style="width:${size}px;height:${size}px" viewBox="0 0 24 24" fill="none">
+      <path d="M6 16a4 4 0 010-8 5 5 0 019.6-1.5A4.5 4.5 0 0118.5 16H6z" fill="rgba(255,255,255,${opacity})"/>
+    </svg>`;
+  }
+  function sunIcon(size) {
+    return `<svg class="w-icon" style="width:${size}px;height:${size}px" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="5" fill="#ffe17d"/>
+      <g stroke="#ffe17d" stroke-width="1.6" stroke-linecap="round">
+        <line x1="12" y1="1" x2="12" y2="3.5"/><line x1="12" y1="20.5" x2="12" y2="23"/>
+        <line x1="1" y1="12" x2="3.5" y2="12"/><line x1="20.5" y1="12" x2="23" y2="12"/>
+        <line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/>
+        <line x1="19.8" y1="4.2" x2="18" y2="6"/><line x1="6" y1="18" x2="4.2" y2="19.8"/>
+      </g>
+    </svg>`;
+  }
+  function rainIcon(size) {
+    return `<svg class="w-icon" style="width:${size}px;height:${size}px" viewBox="0 0 24 24" fill="none">
+      <path d="M6 13a4 4 0 010-8 5 5 0 019.6-1.5A4.5 4.5 0 0118.5 13H6z" fill="rgba(255,255,255,0.9)"/>
+      <g stroke="#9cd0ff" stroke-width="1.4" stroke-linecap="round">
+        <line x1="8" y1="16" x2="7" y2="19"/><line x1="12" y1="16" x2="11" y2="19"/><line x1="16" y1="16" x2="15" y2="19"/>
+      </g>
+    </svg>`;
+  }
+  function moonIcon(size) {
+    return `<svg class="w-icon" style="width:${size}px;height:${size}px" viewBox="0 0 24 24" fill="none">
+      <path d="M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z" fill="#f2f3ea"/>
+    </svg>`;
+  }
+  function iconFor(cond, size, isDay) {
+    if (cond === "sunny") return isDay ? sunIcon(size) : moonIcon(size);
+    if (cond === "rain") return rainIcon(size);
+    return cloudIcon(size, isDay ? 0.9 : 0.4);
+  }
+
+  function buildBackground(condition, isDay) {
+    let cls = "w-bg bg-" + (condition === "sunny" ? "sunny" : condition === "rain" ? "rain" : "cloudy");
+    if (!isDay) cls += " bg-night";
+    let inner = "";
+
+    if (condition === "sunny") {
+      inner = isDay ? `<div class="sun"></div>` : `<div class="moon"></div>`;
+    } else if (condition === "rain") {
+      inner += `<div class="rain-cloud" style="width:180px;height:60px;top:20px;left:-30px;"></div>`;
+      inner += `<div class="rain-cloud" style="width:140px;height:50px;top:50px;left:120px;"></div>`;
+      inner += `<div class="rain-cloud" style="width:160px;height:55px;top:10px;left:260px;"></div>`;
+      const dropCount = 40;
+      for (let i = 0; i < dropCount; i++) {
+        const left = Math.random() * 100;
+        const delay = Math.random() * 2;
+        const duration = 0.6 + Math.random() * 0.6;
+        inner += `<div class="raindrop" style="left:${left}%; animation-duration:${duration}s; animation-delay:${delay}s;"></div>`;
+      }
+    } else {
+      const clouds = [
+        { w: 140, h: 46, top: 30, dur: 38 },
+        { w: 100, h: 34, top: 90, dur: 46 },
+        { w: 170, h: 54, top: 150, dur: 55 },
+        { w: 90, h: 30, top: 200, dur: 42 }
+      ];
+      clouds.forEach((c, i) => {
+        inner += `<div class="cloud-shape" style="width:${c.w}px;height:${c.h}px;top:${c.top}px;left:-140px; animation: drift ${c.dur}s linear infinite; animation-delay: -${i * 7}s;"></div>`;
+      });
+    }
+    return `<div class="${cls}">${inner}</div>`;
+  }
+
+  function minutesAgo(date) {
+    if (!date) return "Updating…";
+    const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60000));
+    if (mins < 1) return "Updated just now";
+    if (mins === 1) return "Updated 1 minute ago";
+    return `Updated ${mins} minutes ago`;
+  }
+
+  function condText(cond) {
+    if (cond === "sunny") return "Sunny";
+    if (cond === "rain") return "Rain";
+    return "Cloudy";
+  }
+
+  // Picks which hourly forecast entry represents "right now" based on real
+  // elapsed time since the data was fetched, so the widget progresses through
+  // the timeline on its own instead of freezing until the next refresh.
+  function activeHourEntry() {
+    if (!state.hourly.length || !state.hourlyBase) return null;
+    const elapsedHours = (Date.now() - state.hourlyBase.getTime()) / 3600000;
+    const idx = Math.min(state.hourly.length - 1, Math.max(0, Math.round(elapsedHours)));
+    return { entry: state.hourly[idx], idx };
+  }
+
+  function render() {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const globalMax = state.daily.length ? Math.max(...state.daily.map(d => d.high)) : state.todayHigh;
+    const globalMin = state.daily.length ? Math.min(...state.daily.map(d => d.low)) : state.todayLow;
+
+    const active = activeHourEntry();
+    const displayCondition = active ? active.entry.cond : state.condition;
+    const displayIsDay = active && active.entry.isDay !== undefined ? active.entry.isDay : state.isDay;
+    const displayTemp = active ? active.entry.tempF : state.current.tempF;
+    const displayConditionText = active ? condText(active.entry.cond) : state.current.conditionText;
+
+    root.innerHTML = `
+      ${buildBackground(displayCondition, displayIsDay)}
+      <div class="w-content">
+        <div class="w-statusbar">
+          <div>${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' ', '')}</div>
+          <div class="w-statusbar-icons">
+            <svg width="18" height="12" viewBox="0 0 18 12" fill="none"><path d="M1 9L1 11M5 6L5 11M9 3L9 11M13 1L13 11" stroke="white" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M8 10.5c3.3 0 6-2.2 8-4.5C14 3.5 11.3 1.5 8 1.5S2 3.5 0 6c2 2.3 4.7 4.5 8 4.5z" stroke="white" stroke-width="1.3"/><circle cx="8" cy="6" r="2" fill="white"/></svg>
+            <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="1" y="1" width="20" height="10" rx="2.5" stroke="white" stroke-width="1.2"/><rect x="2.5" y="2.5" width="15" height="7" rx="1.2" fill="white"/><rect x="22" y="4" width="1.5" height="4" rx="0.7" fill="white"/></svg>
+          </div>
+        </div>
+        <div class="w-header">
+          <div class="w-location">${state.location}</div>
+          <div class="w-date">${dateStr}</div>
+        </div>
+        <div class="w-current">
+          <div class="w-temp">${displayTemp}°</div>
+          <div class="w-condition">
+            ${iconFor(displayCondition, 30, displayIsDay)}
+            <div class="w-condition-text">${displayConditionText}</div>
+            <div class="w-high-low">H:${state.todayHigh}°  L:${state.todayLow}°</div>
+          </div>
+        </div>
+
+        <div class="w-blurb">${state.blurb}</div>
+
+        ${state.hourly.length ? `
+        <div class="w-hourly">
+          ${state.hourly.map((h, i) => `
+            <div class="w-hour" style="${active && i === active.idx ? 'opacity:1;font-weight:700;' : 'opacity:0.85;'}">
+              <div class="w-hour-label">${active && i === active.idx ? 'Now' : h.label}</div>
+              ${iconFor(h.cond, 20, h.isDay !== undefined ? h.isDay : state.isDay)}
+              ${h.rain > 0 ? `<div class="w-hour-rain">${h.rain}%</div>` : `<div class="w-hour-rain">&nbsp;</div>`}
+              <div class="w-hour-temp">${h.tempF}°</div>
+            </div>
+          `).join('')}
+        </div>` : ``}
+
+        ${state.daily.length ? `
+        <div class="w-daily">
+          ${state.daily.map(d => {
+            const leftPct = ((d.low - globalMin) / (globalMax - globalMin || 1)) * 70;
+            const widthPct = ((d.high - d.low) / (globalMax - globalMin || 1)) * 70;
+            return `
+            <div class="w-day-row">
+              <div class="w-day-name">${d.day}</div>
+              ${iconFor(d.cond, 20, true)}
+              <div class="w-day-rain">${d.rain > 0 ? d.rain + '%' : ''}</div>
+              <div class="w-day-low">${d.low}°</div>
+              <div class="w-bar-track"><div class="w-bar-fill" style="left:${leftPct}%; width:${widthPct}%;"></div></div>
+              <div class="w-day-high">${d.high}°</div>
+            </div>`;
+          }).join('')}
+        </div>` : ``}
+
+        <div class="w-refresh-note">${minutesAgo(state.updatedAt)} · refreshes every ${REFRESH_MINUTES} min</div>
+      </div>
+    `;
+  }
+
+  async function fetchLiveWeather() {
+    const systemPrompt = `You are a weather data API. Use web search to find the CURRENT real-time weather conditions and forecast for ${LOCATION} (lat ${LAT}, lon ${LON}). Respond with ONLY a raw JSON object, no markdown fences, no commentary, matching exactly this shape:
+{
+  "condition": "sunny" | "cloudy" | "rain",
+  "isDay": boolean,
+  "location": "City, Region",
+  "current": { "tempF": number, "conditionText": "short string" },
+  "todayHigh": number,
+  "todayLow": number,
+  "blurb": "one short sentence about what's coming up in the next few hours",
+  "hourly": [ { "label": "Now"|"3PM"|etc, "tempF": number, "rain": number (0-100), "cond": "sunny"|"cloudy"|"rain", "isDay": boolean } ... 10-12 entries covering the next 12 hours ],
+  "daily": [ { "day": "Today"|"Mon"|etc, "low": number, "high": number, "rain": number (0-100), "cond": "sunny"|"cloudy"|"rain" } ... 6-7 entries ]
+}
+Use Fahrenheit. Base isDay on local sunrise/sunset at that location right now. Be accurate to real current conditions.`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: "Give me the current weather JSON now." }],
+        tools: [{ type: "web_search_20250305", name: "web_search" }]
+      })
+    });
+
+    const data = await response.json();
+    const textBlock = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+    const cleaned = textBlock.replace(/```json|```/g, "").trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON in response");
+    const parsed = JSON.parse(jsonMatch[0]);
+    return parsed;
+  }
+
+  async function refresh() {
+    try {
+      const live = await fetchLiveWeather();
+      state = { ...state, ...live, updatedAt: new Date(), hourlyBase: new Date() };
+    } catch (err) {
+      console.error("Weather refresh failed:", err);
+      if (!state.updatedAt) {
+        state.blurb = "Couldn't reach live weather right now — showing last known conditions.";
+      }
+    }
+    render();
+  }
+
+  render(); // initial paint with fallback/loading data
+  refresh(); // kick off live fetch
+  setInterval(refresh, REFRESH_MINUTES * 60 * 1000);
+  setInterval(render, 1000); // keep the clock/status bar ticking every second
+})();
+</script>
